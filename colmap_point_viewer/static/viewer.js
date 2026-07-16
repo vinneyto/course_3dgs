@@ -148,6 +148,9 @@ export function render({ model, el }) {
   debugConsole.append("info", `WebGL renderer: ${gl.getParameter(gl.RENDERER)}`);
   debugConsole.append("info", `WebGL vendor: ${gl.getParameter(gl.VENDOR)}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.domElement.style.display = "block";
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
   canvasContainer.appendChild(renderer.domElement);
 
   const mainCamera = new THREE.PerspectiveCamera(60, 1, 0.001, 100000);
@@ -247,11 +250,13 @@ export function render({ model, el }) {
   let resizeFrame = null;
   function applyResize() {
     resizeFrame = null;
-    const width = Math.max(canvasContainer.clientWidth, 1);
-    const height = Math.max(canvasContainer.clientHeight, 1);
+    const rect = canvasContainer.getBoundingClientRect();
+    const width = Math.max(Math.floor(rect.width), 1);
+    const height = Math.max(Math.floor(rect.height), 1);
     renderer.setSize(width, height, false);
     mainCamera.aspect = width / height;
     mainCamera.updateProjectionMatrix();
+    debugConsole.append("info", `resize: css=${width}x${height}, drawingBuffer=${renderer.domElement.width}x${renderer.domElement.height}, dpr=${renderer.getPixelRatio()}`);
   }
 
   function scheduleResize() {
