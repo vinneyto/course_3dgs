@@ -113,8 +113,20 @@ function createDebugConsole(el) {
 
 export function render({ model, el }) {
   el.innerHTML = model.get("html_template");
+  el.style.display = "block";
+  el.style.background = model.get("background");
+  const styledAncestors = [];
+  let ancestor = el.parentElement;
+  for (let i = 0; i < 3 && ancestor; i += 1) {
+    styledAncestors.push({ element: ancestor, background: ancestor.style.background });
+    ancestor.style.background = model.get("background");
+    ancestor = ancestor.parentElement;
+  }
+
   const root = el.querySelector(".colmap-point-viewer");
   const statusEl = el.querySelector(".colmap-point-viewer__status");
+  const prevCameraButton = el.querySelector(".colmap-point-viewer__camera-prev");
+  const nextCameraButton = el.querySelector(".colmap-point-viewer__camera-next");
   const backToOrbitButton = el.querySelector(".colmap-point-viewer__back-to-orbit");
   const canvasContainer = el.querySelector(".colmap-point-viewer__canvas-container");
   const debugConsole = createDebugConsole(el);
@@ -125,7 +137,7 @@ export function render({ model, el }) {
   root.style.background = model.get("background");
   root.style.borderRadius = "6px";
   root.style.overflow = "hidden";
-  root.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+  root.style.border = "1px solid rgba(0, 0, 0, 0.45)";
   statusEl.style.color = "#e8edf2";
   statusEl.style.font = "12px/1.4 system-ui, sans-serif";
   statusEl.style.flex = "1 1 auto";
@@ -134,6 +146,8 @@ export function render({ model, el }) {
   statusEl.parentElement.style.display = "flex";
   statusEl.parentElement.style.alignItems = "center";
   statusEl.parentElement.style.gap = "10px";
+  prevCameraButton.style.cursor = "pointer";
+  nextCameraButton.style.cursor = "pointer";
   backToOrbitButton.style.cursor = "pointer";
   debugConsole.toggleButton.style.cursor = "pointer";
   debugConsole.panel.style.maxHeight = "220px";
@@ -271,10 +285,16 @@ export function render({ model, el }) {
     };
   }
 
+  function setCameraModeButtonsHidden(hidden) {
+    prevCameraButton.hidden = hidden;
+    nextCameraButton.hidden = hidden;
+    backToOrbitButton.hidden = hidden;
+  }
+
   function restoreOrbitView() {
     if (savedOrbitView === null) return;
     selectedCameraIndex = null;
-    backToOrbitButton.hidden = true;
+    setCameraModeButtonsHidden(true);
     bboxHelper.visible = true;
     controls.enabled = true;
     mainCamera.position.copy(savedOrbitView.position);
@@ -290,22 +310,16 @@ export function render({ model, el }) {
     debugConsole.append("info", "returned to orbit mode");
   }
 
-  function onPointerDown(event) {
-    if (selectedCameraIndex !== null) return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, mainCamera);
-    const hit = raycaster.intersectObjects(markers, false)[0];
-    if (!hit) return;
-
-    const cameraIndex = hit.object.userData.cameraIndex;
-    savedOrbitView = saveOrbitView();
-    selectedCameraIndex = cameraIndex;
+  function selectCamera(cameraIndex, { saveOrbit = false } = {}) {
+    if (cameraCount === 0) return;
+    const wrappedIndex = (cameraIndex + cameraCount) % cameraCount;
+    if (saveOrbit) savedOrbitView = saveOrbitView();
+    selectedCameraIndex = wrappedIndex;
     controls.enabled = false;
-    backToOrbitButton.hidden = false;
+    setCameraModeButtonsHidden(false);
     bboxHelper.visible = false;
-    const c2w = cameraPoses[cameraIndex];
+
+    const c2w = cameraPoses[wrappedIndex];
     const threePose = colmapCameraToThreePose(c2w);
     mainCamera.matrixAutoUpdate = false;
     mainCamera.matrix.copy(threePose);
@@ -317,8 +331,39 @@ export function render({ model, el }) {
     mainCamera.far = Math.max(radius * 100, 1000);
     mainCamera.updateProjectionMatrix();
 
-    updateStatus(statusEl, pointCount, cameraCount, cameraIndex);
-    debugConsole.append("info", `selected camera mode: camera=${cameraIndex}`);
+    updateStatus(statusEl, pointCount, cameraCount, wrappedIndex);
+    debugConsole.append("info", `selected camera mode: camera=${wrappedIndex}`);
+  }
+
+  function selectRelativeCamera(offset) {
+    if (selectedCameraIndex === null) return;
+    selectCamera(selectedCameraIndex + offset);
+  }
+
+  function onPointerDown(event) {
+    if (selectedCameraIndex !== null) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, mainCamera);
+    const hit = raycaster.intersectObjects(markers, false)[0];
+    if (!hit) return;
+
+    selectCamera(hit.object.userData.cameraIndex, { saveOrbit: true });
+  }
+
+  function onKeyDown(event) {
+    if (selectedCameraIndex === null) return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      selectRelativeCamera(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      selectRelativeCamera(1);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      restoreOrbitView();
+    }
   }
 
   let resizeFrame = null;
@@ -338,8 +383,13 @@ export function render({ model, el }) {
     resizeFrame = requestAnimationFrame(applyResize);
   }
 
+  const onPrevCameraClick = () => selectRelativeCamera(-1);
+  const onNextCameraClick = () => selectRelativeCamera(1);
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  prevCameraButton.addEventListener("click", onPrevCameraClick);
+  nextCameraButton.addEventListener("click", onNextCameraClick);
   backToOrbitButton.addEventListener("click", restoreOrbitView);
+  window.addEventListener("keydown", onKeyDown);
   const resizeObserver = new ResizeObserver(scheduleResize);
   resizeObserver.observe(canvasContainer);
   scheduleResize();
@@ -356,7 +406,11 @@ export function render({ model, el }) {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame);
     if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+    prevCameraButton.removeEventListener("click", onPrevCameraClick);
+    nextCameraButton.removeEventListener("click", onNextCameraClick);
     backToOrbitButton.removeEventListener("click", restoreOrbitView);
+    window.removeEventListener("keydown", onKeyDown);
+    for (const { element, background } of styledAncestors) element.style.background = background;
     resizeObserver.disconnect();
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
