@@ -118,25 +118,6 @@ export function render({ model, el }) {
   el.style.maxWidth = "none";
   el.style.margin = "0";
   el.style.background = model.get("background");
-  const styledAncestors = [];
-  let ancestor = el.parentElement;
-  for (let i = 0; i < 3 && ancestor; i += 1) {
-    styledAncestors.push({
-      element: ancestor,
-      background: ancestor.style.background,
-      padding: ancestor.style.padding,
-      margin: ancestor.style.margin,
-      width: ancestor.style.width,
-      maxWidth: ancestor.style.maxWidth,
-    });
-    ancestor.style.background = model.get("background");
-    ancestor.style.padding = "0";
-    ancestor.style.margin = "0";
-    ancestor.style.width = "100%";
-    ancestor.style.maxWidth = "none";
-    ancestor = ancestor.parentElement;
-  }
-
   const root = el.querySelector(".colmap-point-viewer");
   const statusEl = el.querySelector(".colmap-point-viewer__status");
   const prevCameraButton = el.querySelector(".colmap-point-viewer__camera-prev");
@@ -436,13 +417,6 @@ export function render({ model, el }) {
     nextCameraButton.removeEventListener("click", onNextCameraClick);
     backToOrbitButton.removeEventListener("click", restoreOrbitView);
     window.removeEventListener("keydown", onKeyDown);
-    for (const { element, background, padding, margin, width, maxWidth } of styledAncestors) {
-      element.style.background = background;
-      element.style.padding = padding;
-      element.style.margin = margin;
-      element.style.width = width;
-      element.style.maxWidth = maxWidth;
-    }
     resizeObserver.disconnect();
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
