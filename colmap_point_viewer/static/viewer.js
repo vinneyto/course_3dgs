@@ -45,6 +45,11 @@ function stringifyLogValue(value) {
   }
 }
 
+function isBenignResizeObserverMessage(values) {
+  return values.some((value) => (typeof value === "string" && value.includes("ResizeObserver loop completed with undelivered notifications"))
+    || (value && typeof value.message === "string" && value.message.includes("ResizeObserver loop completed with undelivered notifications")));
+}
+
 function createDebugConsole(el) {
   const panel = el.querySelector(".colmap-point-viewer__debug-panel");
   const logEl = el.querySelector(".colmap-point-viewer__debug-log");
@@ -52,6 +57,9 @@ function createDebugConsole(el) {
   const clearButton = el.querySelector(".colmap-point-viewer__debug-clear");
 
   const append = (level, ...values) => {
+    if (level === "error" && isBenignResizeObserverMessage(values)) {
+      level = "warn";
+    }
     const timestamp = new Date().toLocaleTimeString();
     const line = `[${timestamp}] ${level}: ${values.map(stringifyLogValue).join(" ")}`;
     logEl.textContent += `${line}\n`;
@@ -166,10 +174,13 @@ export function render({ model, el }) {
   const size = bbox.getSize(new THREE.Vector3());
   const radius = Math.max(size.length() * 0.5, 1e-3);
   debugConsole.append("info", `bbox min=${bbox.min.toArray().join(", ")} max=${bbox.max.toArray().join(", ")} radius=${radius}`);
+  debugConsole.append("info", `bbox center=${center.toArray().join(", ")}`);
   const bboxHelper = new THREE.Box3Helper(bbox, 0xffffff);
   scene.add(bboxHelper);
   controls.target.copy(center);
   mainCamera.position.copy(center).add(new THREE.Vector3(radius, -radius, radius));
+  mainCamera.lookAt(center);
+  controls.update();
   mainCamera.near = Math.max(radius / 10000, 0.001);
   mainCamera.far = Math.max(radius * 100, 1000);
   mainCamera.updateProjectionMatrix();
@@ -233,7 +244,9 @@ export function render({ model, el }) {
     updateStatus(statusEl, pointCount, cameraCount, cameraIndex);
   }
 
-  function resize() {
+  let resizeFrame = null;
+  function applyResize() {
+    resizeFrame = null;
     const width = Math.max(canvasContainer.clientWidth, 1);
     const height = Math.max(canvasContainer.clientHeight, 1);
     renderer.setSize(width, height, false);
@@ -241,10 +254,15 @@ export function render({ model, el }) {
     mainCamera.updateProjectionMatrix();
   }
 
+  function scheduleResize() {
+    if (resizeFrame !== null) return;
+    resizeFrame = requestAnimationFrame(applyResize);
+  }
+
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
-  const resizeObserver = new ResizeObserver(resize);
+  const resizeObserver = new ResizeObserver(scheduleResize);
   resizeObserver.observe(canvasContainer);
-  resize();
+  scheduleResize();
 
   let animationFrame = null;
   function animate() {
@@ -256,6 +274,7 @@ export function render({ model, el }) {
 
   return () => {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
     resizeObserver.disconnect();
     window.removeEventListener("error", onWindowError);
