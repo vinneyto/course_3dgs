@@ -17,6 +17,38 @@ function colmapCameraToThreePose(c2w) {
   return c2w.clone().multiply(basisChange);
 }
 
+
+function quantileSorted(values, q) {
+  if (values.length === 0) return 0;
+  const index = Math.min(values.length - 1, Math.max(0, Math.round(q * (values.length - 1))));
+  return values[index];
+}
+
+function computeRobustPointBox(positions, pointCount, keptFraction = 0.9) {
+  const trim = Math.max(0, Math.min(0.5, (1 - keptFraction) / 2));
+  const axes = [[], [], []];
+  for (let i = 0; i < pointCount; i += 1) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const value = positions[i * 3 + axis];
+      if (Number.isFinite(value)) axes[axis].push(value);
+    }
+  }
+
+  const mins = [];
+  const maxs = [];
+  for (const values of axes) {
+    if (values.length === 0) return null;
+    values.sort((a, b) => a - b);
+    mins.push(quantileSorted(values, trim));
+    maxs.push(quantileSorted(values, 1 - trim));
+  }
+
+  return new THREE.Box3(
+    new THREE.Vector3(mins[0], mins[1], mins[2]),
+    new THREE.Vector3(maxs[0], maxs[1], maxs[2]),
+  );
+}
+
 function buildFrustumGeometry(c2w, H, W, fx, fy, cx, cy, scale) {
   const center = new THREE.Vector3().setFromMatrixPosition(c2w);
   const rotation = new THREE.Matrix3().setFromMatrix4(c2w);
@@ -175,12 +207,14 @@ export function render({ model, el }) {
   const points = new THREE.Points(pointGeometry, pointMaterial);
   scene.add(points);
 
-  const bbox = pointGeometry.boundingBox ?? new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+  const fullBbox = pointGeometry.boundingBox ?? new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+  const bbox = computeRobustPointBox(positions, pointCount, 0.9) ?? fullBbox;
   const center = bbox.getCenter(new THREE.Vector3());
   const size = bbox.getSize(new THREE.Vector3());
   const radius = Math.max(size.length() * 0.5, 1e-3);
-  debugConsole.append("info", `bbox min=${bbox.min.toArray().join(", ")} max=${bbox.max.toArray().join(", ")} radius=${radius}`);
-  debugConsole.append("info", `bbox center=${center.toArray().join(", ")}`);
+  debugConsole.append("info", `full bbox min=${fullBbox.min.toArray().join(", ")} max=${fullBbox.max.toArray().join(", ")}`);
+  debugConsole.append("info", `robust bbox 90% min=${bbox.min.toArray().join(", ")} max=${bbox.max.toArray().join(", ")} radius=${radius}`);
+  debugConsole.append("info", `robust bbox center=${center.toArray().join(", ")}`);
   const bboxHelper = new THREE.Box3Helper(bbox, 0xffffff);
   scene.add(bboxHelper);
   controls.target.copy(center);
@@ -241,6 +275,7 @@ export function render({ model, el }) {
     if (savedOrbitView === null) return;
     selectedCameraIndex = null;
     backToOrbitButton.hidden = true;
+    bboxHelper.visible = true;
     controls.enabled = true;
     mainCamera.position.copy(savedOrbitView.position);
     mainCamera.quaternion.copy(savedOrbitView.quaternion);
@@ -269,6 +304,7 @@ export function render({ model, el }) {
     selectedCameraIndex = cameraIndex;
     controls.enabled = false;
     backToOrbitButton.hidden = false;
+    bboxHelper.visible = false;
     const c2w = cameraPoses[cameraIndex];
     const threePose = colmapCameraToThreePose(c2w);
     mainCamera.matrixAutoUpdate = false;
