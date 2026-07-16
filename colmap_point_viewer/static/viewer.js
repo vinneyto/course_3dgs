@@ -114,12 +114,26 @@ function createDebugConsole(el) {
 export function render({ model, el }) {
   el.innerHTML = model.get("html_template");
   el.style.display = "block";
+  el.style.width = "100%";
+  el.style.maxWidth = "none";
+  el.style.margin = "0";
   el.style.background = model.get("background");
   const styledAncestors = [];
   let ancestor = el.parentElement;
   for (let i = 0; i < 3 && ancestor; i += 1) {
-    styledAncestors.push({ element: ancestor, background: ancestor.style.background });
+    styledAncestors.push({
+      element: ancestor,
+      background: ancestor.style.background,
+      padding: ancestor.style.padding,
+      margin: ancestor.style.margin,
+      width: ancestor.style.width,
+      maxWidth: ancestor.style.maxWidth,
+    });
     ancestor.style.background = model.get("background");
+    ancestor.style.padding = "0";
+    ancestor.style.margin = "0";
+    ancestor.style.width = "100%";
+    ancestor.style.maxWidth = "none";
     ancestor = ancestor.parentElement;
   }
 
@@ -131,6 +145,8 @@ export function render({ model, el }) {
   const canvasContainer = el.querySelector(".colmap-point-viewer__canvas-container");
   const debugConsole = createDebugConsole(el);
 
+  root.style.width = "100%";
+  root.style.maxWidth = "none";
   root.style.height = model.get("height");
   root.style.display = "flex";
   root.style.flexDirection = "column";
@@ -246,6 +262,7 @@ export function render({ model, el }) {
   const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
   const frustumMaterial = new THREE.LineBasicMaterial({ color: 0x66ccff });
   const markers = [];
+  const frustums = [];
   const cameraPoses = [];
   const H = model.get("H");
   const W = model.get("W");
@@ -258,6 +275,7 @@ export function render({ model, el }) {
     const c2w = makeMatrix4(values);
     cameraPoses.push(c2w);
     const frustum = new THREE.LineSegments(buildFrustumGeometry(c2w, H, W, fx, fy, cx, cy, frustumScale), frustumMaterial);
+    frustums.push(frustum);
     scene.add(frustum);
 
     const marker = new THREE.Mesh(markerGeometry, markerMaterial);
@@ -291,11 +309,17 @@ export function render({ model, el }) {
     backToOrbitButton.hidden = hidden;
   }
 
+  function setCameraHelpersVisible(visible) {
+    for (const frustum of frustums) frustum.visible = visible;
+    for (const marker of markers) marker.visible = visible;
+  }
+
   function restoreOrbitView() {
     if (savedOrbitView === null) return;
     selectedCameraIndex = null;
     setCameraModeButtonsHidden(true);
     bboxHelper.visible = true;
+    setCameraHelpersVisible(true);
     controls.enabled = true;
     mainCamera.position.copy(savedOrbitView.position);
     mainCamera.quaternion.copy(savedOrbitView.quaternion);
@@ -318,6 +342,7 @@ export function render({ model, el }) {
     controls.enabled = false;
     setCameraModeButtonsHidden(false);
     bboxHelper.visible = false;
+    setCameraHelpersVisible(false);
 
     const c2w = cameraPoses[wrappedIndex];
     const threePose = colmapCameraToThreePose(c2w);
@@ -410,7 +435,13 @@ export function render({ model, el }) {
     nextCameraButton.removeEventListener("click", onNextCameraClick);
     backToOrbitButton.removeEventListener("click", restoreOrbitView);
     window.removeEventListener("keydown", onKeyDown);
-    for (const { element, background } of styledAncestors) element.style.background = background;
+    for (const { element, background, padding, margin, width, maxWidth } of styledAncestors) {
+      element.style.background = background;
+      element.style.padding = padding;
+      element.style.margin = margin;
+      element.style.width = width;
+      element.style.maxWidth = maxWidth;
+    }
     resizeObserver.disconnect();
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
