@@ -83,6 +83,7 @@ export function render({ model, el }) {
   el.innerHTML = model.get("html_template");
   const root = el.querySelector(".colmap-point-viewer");
   const statusEl = el.querySelector(".colmap-point-viewer__status");
+  const backToOrbitButton = el.querySelector(".colmap-point-viewer__back-to-orbit");
   const canvasContainer = el.querySelector(".colmap-point-viewer__canvas-container");
   const debugConsole = createDebugConsole(el);
 
@@ -95,12 +96,13 @@ export function render({ model, el }) {
   root.style.border = "1px solid rgba(255, 255, 255, 0.12)";
   statusEl.style.color = "#e8edf2";
   statusEl.style.font = "12px/1.4 system-ui, sans-serif";
+  statusEl.style.flex = "1 1 auto";
   statusEl.parentElement.style.padding = "6px 10px";
   statusEl.parentElement.style.background = "rgba(0, 0, 0, 0.22)";
   statusEl.parentElement.style.display = "flex";
   statusEl.parentElement.style.alignItems = "center";
   statusEl.parentElement.style.gap = "10px";
-  debugConsole.toggleButton.style.marginLeft = "auto";
+  backToOrbitButton.style.cursor = "pointer";
   debugConsole.toggleButton.style.cursor = "pointer";
   debugConsole.panel.style.maxHeight = "220px";
   debugConsole.panel.style.overflow = "auto";
@@ -154,6 +156,7 @@ export function render({ model, el }) {
   canvasContainer.appendChild(renderer.domElement);
 
   const mainCamera = new THREE.PerspectiveCamera(60, 1, 0.001, 100000);
+  mainCamera.up.set(0, -1, 0);
   const controls = new OrbitControls(mainCamera, renderer.domElement);
   controls.enableDamping = true;
 
@@ -219,7 +222,41 @@ export function render({ model, el }) {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const fovY = 2 * Math.atan(H / (2 * fy)) * 180 / Math.PI;
+  let selectedCameraIndex = null;
+  let savedOrbitView = null;
+
+  function saveOrbitView() {
+    return {
+      position: mainCamera.position.clone(),
+      quaternion: mainCamera.quaternion.clone(),
+      up: mainCamera.up.clone(),
+      fov: mainCamera.fov,
+      near: mainCamera.near,
+      far: mainCamera.far,
+      target: controls.target.clone(),
+    };
+  }
+
+  function restoreOrbitView() {
+    if (savedOrbitView === null) return;
+    selectedCameraIndex = null;
+    backToOrbitButton.hidden = true;
+    controls.enabled = true;
+    mainCamera.position.copy(savedOrbitView.position);
+    mainCamera.quaternion.copy(savedOrbitView.quaternion);
+    mainCamera.up.copy(savedOrbitView.up);
+    mainCamera.fov = savedOrbitView.fov;
+    mainCamera.near = savedOrbitView.near;
+    mainCamera.far = savedOrbitView.far;
+    controls.target.copy(savedOrbitView.target);
+    mainCamera.updateProjectionMatrix();
+    controls.update();
+    updateStatus(statusEl, pointCount, cameraCount, null);
+    debugConsole.append("info", "returned to orbit mode");
+  }
+
   function onPointerDown(event) {
+    if (selectedCameraIndex !== null) return;
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -228,6 +265,10 @@ export function render({ model, el }) {
     if (!hit) return;
 
     const cameraIndex = hit.object.userData.cameraIndex;
+    savedOrbitView = saveOrbitView();
+    selectedCameraIndex = cameraIndex;
+    controls.enabled = false;
+    backToOrbitButton.hidden = false;
     const c2w = cameraPoses[cameraIndex];
     const threePose = colmapCameraToThreePose(c2w);
     mainCamera.matrixAutoUpdate = false;
@@ -240,11 +281,8 @@ export function render({ model, el }) {
     mainCamera.far = Math.max(radius * 100, 1000);
     mainCamera.updateProjectionMatrix();
 
-    const target = new THREE.Vector3(0, 0, 1).applyMatrix4(c2w);
-    const origin = new THREE.Vector3().setFromMatrixPosition(c2w);
-    controls.target.copy(origin).add(target.sub(origin).normalize().multiplyScalar(radius * 0.25));
-    controls.update();
     updateStatus(statusEl, pointCount, cameraCount, cameraIndex);
+    debugConsole.append("info", `selected camera mode: camera=${cameraIndex}`);
   }
 
   let resizeFrame = null;
@@ -254,7 +292,7 @@ export function render({ model, el }) {
     const width = Math.max(Math.floor(rect.width), 1);
     const height = Math.max(Math.floor(rect.height), 1);
     renderer.setSize(width, height, false);
-    mainCamera.aspect = width / height;
+    mainCamera.aspect = selectedCameraIndex === null ? width / height : W / H;
     mainCamera.updateProjectionMatrix();
     debugConsole.append("info", `resize: css=${width}x${height}, drawingBuffer=${renderer.domElement.width}x${renderer.domElement.height}, dpr=${renderer.getPixelRatio()}`);
   }
@@ -265,13 +303,14 @@ export function render({ model, el }) {
   }
 
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  backToOrbitButton.addEventListener("click", restoreOrbitView);
   const resizeObserver = new ResizeObserver(scheduleResize);
   resizeObserver.observe(canvasContainer);
   scheduleResize();
 
   let animationFrame = null;
   function animate() {
-    controls.update();
+    if (selectedCameraIndex === null) controls.update();
     renderer.render(scene, mainCamera);
     animationFrame = requestAnimationFrame(animate);
   }
@@ -281,6 +320,7 @@ export function render({ model, el }) {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame);
     if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+    backToOrbitButton.removeEventListener("click", restoreOrbitView);
     resizeObserver.disconnect();
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
