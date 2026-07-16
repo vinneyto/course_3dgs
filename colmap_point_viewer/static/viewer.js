@@ -246,6 +246,7 @@ export function render({ model, el }) {
   debugConsole.append("info", `robust bbox 90% min=${bbox.min.toArray().join(", ")} max=${bbox.max.toArray().join(", ")} radius=${radius}`);
   debugConsole.append("info", `robust bbox center=${center.toArray().join(", ")}`);
   const bboxHelper = new THREE.Box3Helper(bbox, 0xffffff);
+  bboxHelper.visible = false;
   scene.add(bboxHelper);
   controls.target.copy(center);
   mainCamera.position.copy(center).add(new THREE.Vector3(radius, -radius, radius));
@@ -318,7 +319,7 @@ export function render({ model, el }) {
     if (savedOrbitView === null) return;
     selectedCameraIndex = null;
     setCameraModeButtonsHidden(true);
-    bboxHelper.visible = true;
+    bboxHelper.visible = false;
     setCameraHelpersVisible(true);
     controls.enabled = true;
     mainCamera.position.copy(savedOrbitView.position);
