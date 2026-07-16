@@ -1,6 +1,13 @@
 <div class="colmap-point-viewer">
   <div class="colmap-point-viewer__toolbar">
     <span class="colmap-point-viewer__status"></span>
+    <button class="colmap-point-viewer__debug-toggle" type="button">debug console</button>
+  </div>
+  <div class="colmap-point-viewer__debug-panel" hidden>
+    <div class="colmap-point-viewer__debug-actions">
+      <button class="colmap-point-viewer__debug-clear" type="button">clear</button>
+    </div>
+    <pre class="colmap-point-viewer__debug-log"></pre>
   </div>
   <div class="colmap-point-viewer__canvas-container"></div>
 </div>

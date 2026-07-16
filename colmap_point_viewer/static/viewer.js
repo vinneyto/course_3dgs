@@ -35,11 +35,48 @@ function updateStatus(statusEl, pointCount, cameraCount, selectedCamera) {
   statusEl.textContent = `points: ${pointCount} | cameras: ${cameraCount} | selected camera: ${selectedCamera ?? "none"}`;
 }
 
+function stringifyLogValue(value) {
+  if (value instanceof Error) return `${value.name}: ${value.message}\n${value.stack ?? ""}`;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function createDebugConsole(el) {
+  const panel = el.querySelector(".colmap-point-viewer__debug-panel");
+  const logEl = el.querySelector(".colmap-point-viewer__debug-log");
+  const toggleButton = el.querySelector(".colmap-point-viewer__debug-toggle");
+  const clearButton = el.querySelector(".colmap-point-viewer__debug-clear");
+
+  const append = (level, ...values) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `[${timestamp}] ${level}: ${values.map(stringifyLogValue).join(" ")}`;
+    logEl.textContent += `${line}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+    if (level === "error") {
+      panel.hidden = false;
+    }
+  };
+
+  toggleButton.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+  });
+  clearButton.addEventListener("click", () => {
+    logEl.textContent = "";
+  });
+
+  return { append, panel, logEl, toggleButton, clearButton };
+}
+
 export function render({ model, el }) {
   el.innerHTML = model.get("html_template");
   const root = el.querySelector(".colmap-point-viewer");
   const statusEl = el.querySelector(".colmap-point-viewer__status");
   const canvasContainer = el.querySelector(".colmap-point-viewer__canvas-container");
+  const debugConsole = createDebugConsole(el);
 
   root.style.height = model.get("height");
   root.style.display = "flex";
@@ -52,9 +89,39 @@ export function render({ model, el }) {
   statusEl.style.font = "12px/1.4 system-ui, sans-serif";
   statusEl.parentElement.style.padding = "6px 10px";
   statusEl.parentElement.style.background = "rgba(0, 0, 0, 0.22)";
+  statusEl.parentElement.style.display = "flex";
+  statusEl.parentElement.style.alignItems = "center";
+  statusEl.parentElement.style.gap = "10px";
+  debugConsole.toggleButton.style.marginLeft = "auto";
+  debugConsole.toggleButton.style.cursor = "pointer";
+  debugConsole.panel.style.maxHeight = "220px";
+  debugConsole.panel.style.overflow = "auto";
+  debugConsole.panel.style.background = "#101318";
+  debugConsole.panel.style.borderTop = "1px solid rgba(255, 255, 255, 0.12)";
+  debugConsole.panel.style.borderBottom = "1px solid rgba(255, 255, 255, 0.12)";
+  debugConsole.panel.style.padding = "6px 10px";
+  debugConsole.logEl.style.margin = "6px 0 0";
+  debugConsole.logEl.style.whiteSpace = "pre-wrap";
+  debugConsole.logEl.style.color = "#f2f5f7";
+  debugConsole.logEl.style.font = "12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace";
   canvasContainer.style.flex = "1 1 auto";
   canvasContainer.style.minHeight = "0";
   canvasContainer.style.position = "relative";
+
+  const previousConsoleError = console.error;
+  const previousConsoleWarn = console.warn;
+  console.error = (...args) => {
+    debugConsole.append("error", ...args);
+    previousConsoleError.apply(console, args);
+  };
+  console.warn = (...args) => {
+    debugConsole.append("warn", ...args);
+    previousConsoleWarn.apply(console, args);
+  };
+  const onWindowError = (event) => debugConsole.append("error", event.message, event.filename, event.lineno, event.colno, event.error);
+  const onUnhandledRejection = (event) => debugConsole.append("error", "Unhandled promise rejection", event.reason);
+  window.addEventListener("error", onWindowError);
+  window.addEventListener("unhandledrejection", onUnhandledRejection);
 
   const pc = model.get("pc");
   const colors = model.get("pc_color");
@@ -62,11 +129,16 @@ export function render({ model, el }) {
   const pointCount = pc.length;
   const cameraCount = c2ws.length;
   updateStatus(statusEl, pointCount, cameraCount, null);
+  debugConsole.append("info", `viewer init: points=${pointCount}, cameras=${cameraCount}`);
+  debugConsole.append("info", `intrinsics: H=${model.get("H")}, W=${model.get("W")}, fx=${model.get("fx")}, fy=${model.get("fy")}, cx=${model.get("cx")}, cy=${model.get("cy")}`);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(model.get("background"));
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const gl = renderer.getContext();
+  debugConsole.append("info", `WebGL renderer: ${gl.getParameter(gl.RENDERER)}`);
+  debugConsole.append("info", `WebGL vendor: ${gl.getParameter(gl.VENDOR)}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   canvasContainer.appendChild(renderer.domElement);
 
@@ -93,6 +165,9 @@ export function render({ model, el }) {
   const center = bbox.getCenter(new THREE.Vector3());
   const size = bbox.getSize(new THREE.Vector3());
   const radius = Math.max(size.length() * 0.5, 1e-3);
+  debugConsole.append("info", `bbox min=${bbox.min.toArray().join(", ")} max=${bbox.max.toArray().join(", ")} radius=${radius}`);
+  const bboxHelper = new THREE.Box3Helper(bbox, 0xffffff);
+  scene.add(bboxHelper);
   controls.target.copy(center);
   mainCamera.position.copy(center).add(new THREE.Vector3(radius, -radius, radius));
   mainCamera.near = Math.max(radius / 10000, 0.001);
@@ -183,6 +258,10 @@ export function render({ model, el }) {
     if (animationFrame !== null) cancelAnimationFrame(animationFrame);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
     resizeObserver.disconnect();
+    window.removeEventListener("error", onWindowError);
+    window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    console.error = previousConsoleError;
+    console.warn = previousConsoleWarn;
     controls.dispose();
     pointGeometry.dispose();
     pointMaterial.dispose();
