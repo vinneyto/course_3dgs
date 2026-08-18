@@ -4,7 +4,10 @@ import torch
 
 
 def project_points(pc, c2w, H, W, fx, fy, cx, cy):
-    w2c = torch.eye(4)
+    device = pc.device
+    print(device)
+
+    w2c = torch.eye(4).to(device)
     R = c2w[:3, :3]
     t = c2w[:3, 3]
     w2c[:3, :3] = R.T
@@ -21,7 +24,7 @@ def project_points(pc, c2w, H, W, fx, fy, cx, cy):
     uv = torch.stack([
         fx * x / z + cx,
         fy * y / z + cy
-    ], dim=-1)
+    ], dim=-1).to(device)
 
     return uv, x, y, z
 
@@ -92,3 +95,60 @@ def inv2x2(M, eps=1e-12):
     inv[:, 1, 0] = -c / safe_det
     inv[:, 1, 1] = a / safe_det
     return inv
+
+
+def eigh_2x2(A):
+    """
+    A: [..., 2, 2], symmetric
+
+    Returns:
+        evals: [..., 2]     ascending
+        evecs: [..., 2, 2]  eigenvectors are columns
+    """
+
+    a = A[..., 0, 0]
+    b = A[..., 0, 1]
+    d = A[..., 1, 1]
+
+    # eigenvalues
+    m = 0.5 * (a + d)
+    r = torch.sqrt(
+        (0.5 * (a - d)) ** 2 + b ** 2
+    )
+
+    l_min = m - r
+    l_max = m + r
+
+    evals = torch.stack(
+        [l_min, l_max],
+        dim=-1,
+    )
+
+    # angle of eigenbasis
+    theta = 0.5 * torch.atan2(
+        2.0 * b,
+        a - d,
+    )
+
+    c = torch.cos(theta)
+    s = torch.sin(theta)
+
+    # eigenvector for lambda_min
+    v_min = torch.stack(
+        [-s, c],
+        dim=-1,
+    )
+
+    # eigenvector for lambda_max
+    v_max = torch.stack(
+        [c, s],
+        dim=-1,
+    )
+
+    # columns = eigenvectors
+    evecs = torch.stack(
+        [v_min, v_max],
+        dim=-1,
+    )
+
+    return evals, evecs
