@@ -46,35 +46,35 @@ tile_v = flat_tile_id // num_tiles_u
 ### Псевдокод
 
 ```text
-активировать opacity, scale и quaternion
-построить мировые ковариации Gaussian
+activate opacity, scale, and quaternion
+build world-space Gaussian covariances
 
-спроецировать центры Gaussian в координаты камеры и пиксели
-отбросить Gaussian вне рабочей области камеры
+project Gaussian centers into camera space and pixel coordinates
+discard Gaussians outside the camera working area
 
-для каждого Gaussian:
-    спроецировать covariance 3×3 в covariance 2×2
-    стабилизировать собственные значения covariance 2×2
+for each Gaussian:
+    project the 3×3 covariance into a 2×2 covariance
+    stabilize the eigenvalues of the 2×2 covariance
 
-отсортировать Gaussian по глубине: ближние → дальние
+sort Gaussians by depth: near → far
 
-для каждого Gaussian:
-    найти экранный AABB
-    перевести границы AABB в диапазон tile_u и tile_v
-    создать только существующие пары (gaussian_id, flat_tile_id)
+for each Gaussian:
+    compute its screen-space AABB
+    convert the AABB bounds into tile_u and tile_v ranges
+    create only existing (gaussian_id, flat_tile_id) pairs
 
-стабильно отсортировать пары по flat_tile_id
-сохранить диапазон [start, end) для каждого непустого тайла
+stably sort the pairs by flat_tile_id
+store the [start, end) range for each non-empty tile
 
-для каждого непустого тайла:
-    построить координаты его пикселей
-    взять Gaussian из диапазона [start, end)
-    вычислить квадратичную форму q для каждой пары Gaussian × pixel
-    вычислить alpha
-    вычислить накопленную прозрачность T
-    просуммировать alpha * T * color
+for each non-empty tile:
+    build its pixel coordinates
+    select Gaussians from the [start, end) range
+    compute the quadratic form q for each Gaussian × pixel pair
+    compute alpha
+    compute accumulated transmittance T
+    sum alpha * T * color
 
-собрать тайлы в итоговое изображение H × W × 3
+assemble the tiles into the final H × W × 3 image
 ```
 
 ## Обозначения размеров тензоров
