@@ -45,41 +45,20 @@ def quat_to_mat(quat: torch.Tensor):
     ], dim=-1).reshape(quat.shape[:-1] + (3, 3))
 
 
-def build_covariance(scale_raw, rot_raw, num_gaussians):
+def build_covariance(scale_raw, q_raw):
     """
     Build world-space covariance matrices from standard raw 3DGS parameters.
 
     scale_raw: [N, 3] log-scales
-    rot_raw: [N, 4] quaternions in [w, x, y, z] order
+    q_raw: [N, 4] quaternions in [w, x, y, z] order
     """
-    expected_scale_shape = (num_gaussians, 3)
-    expected_rotation_shape = (num_gaussians, 4)
 
-    if scale_raw.shape != expected_scale_shape:
-        raise ValueError(
-            f"expected scale_raw shape {expected_scale_shape}, "
-            f"got {scale_raw.shape}"
-        )
-    if rot_raw.shape != expected_rotation_shape:
-        raise ValueError(
-            f"expected rot_raw shape {expected_rotation_shape}, "
-            f"got {rot_raw.shape}"
-        )
-
-    # Standard 3DGS stores log-scales and activates them with exp.
-    scale = torch.exp(scale_raw)
-
-    # quat_to_mat expects [x, y, z, w].
-    rot_wxyz = torch.nn.functional.normalize(rot_raw, dim=-1)
-    rot_xyzw = rot_wxyz[:, [1, 2, 3, 0]]
-    rotation = quat_to_mat(rot_xyzw)
-
-    # Sigma = R @ diag(scale^2) @ R^T
-    return (
-        rotation
-        @ torch.diag_embed(scale.square())
-        @ rotation.transpose(1, 2)
-    )
+    scale = torch.exp(scale_raw).clamp_min(1e-6)
+    q = q_raw / (torch.linalg.norm(q_raw, dim=-1, keepdim=True) + 1e-9)
+    R = quat_to_mat(q)
+    S = torch.diag_embed(scale)
+    
+    return R @ S @ S @ R.transpose(1, 2)
 
 
 def scale_intrinsics(H, W, H_src, W_src, fx, fy, cx, cy):
