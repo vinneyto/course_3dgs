@@ -3,6 +3,9 @@ using namespace metal;
 
 #define SH_LEVELS __SH_LEVELS__
 #define SH_COEFFICIENT_COUNT (SH_LEVELS * SH_LEVELS)
+#define COLOR_MODE __COLOR_MODE__
+#define COLOR_MODE_SIGMOID 0
+#define COLOR_MODE_CANONICAL_3DGS 1
 
 inline float3 load_sh_coefficient(
     const device float* sh_coefficients,
@@ -82,7 +85,13 @@ inline float3 evaluate_sh_color(
         * (+0.5900435899266435f * x * (x2 - 3.0f * y2));
 #endif
 
+#if COLOR_MODE == COLOR_MODE_SIGMOID
     return 1.0f / (1.0f + exp(-value));
+#elif COLOR_MODE == COLOR_MODE_CANONICAL_3DGS
+    return clamp(value + 0.5f, 0.0f, 1.0f);
+#else
+#error Unsupported COLOR_MODE
+#endif
 }
 
 kernel void project_gaussians(
