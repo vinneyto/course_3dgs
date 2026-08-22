@@ -9,13 +9,13 @@ description = "Educational 3D Gaussian Splatting renderer with a handwritten Met
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "numpy>=2.0",
     "torch>=2.12.1",
 ]
 
 [project.optional-dependencies]
 notebooks = [
     "matplotlib==3.11.0",
-    "numpy==2.5.0",
     "pillow==12.3.0",
     "torchmetrics==1.9.0",
     "anywidget>=0.9",
