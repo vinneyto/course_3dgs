@@ -1,9 +1,93 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#define SH_LEVELS __SH_LEVELS__
+#define SH_COEFFICIENT_COUNT (SH_LEVELS * SH_LEVELS)
+
+inline float3 load_sh_coefficient(
+    const device float* sh_coefficients,
+    uint gaussian_id,
+    uint coefficient_id
+) {
+    const uint base =
+        (gaussian_id * SH_COEFFICIENT_COUNT + coefficient_id) * 3;
+    return float3(
+        sh_coefficients[base],
+        sh_coefficients[base + 1],
+        sh_coefficients[base + 2]
+    );
+}
+
+inline float3 evaluate_sh_color(
+    const device float* sh_coefficients,
+    uint gaussian_id,
+    float3 view_direction
+) {
+    const float x = view_direction.x;
+    const float y = view_direction.y;
+    const float z = view_direction.z;
+
+    float3 value =
+        load_sh_coefficient(sh_coefficients, gaussian_id, 0)
+        * 0.28209479177387814f;
+
+#if SH_LEVELS >= 2
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 1)
+        * (-0.4886025119029199f * y);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 2)
+        * (+0.4886025119029199f * z);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 3)
+        * (-0.4886025119029199f * x);
+#endif
+
+#if SH_LEVELS >= 3
+    const float x2 = x * x;
+    const float y2 = y * y;
+    const float z2 = z * z;
+    const float xy = x * y;
+    const float yz = y * z;
+    const float xz = x * z;
+    const float x2_minus_y2 = x2 - y2;
+
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 4)
+        * (+1.0925484305920792f * xy);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 5)
+        * (+1.0925484305920792f * yz);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 6)
+        * (+0.31539156525252005f * (3.0f * z2 - 1.0f));
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 7)
+        * (+1.0925484305920792f * xz);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 8)
+        * (+0.5462742152960396f * x2_minus_y2);
+#endif
+
+#if SH_LEVELS >= 4
+    const float four_z2_minus_x2_minus_y2 = 4.0f * z2 - x2 - y2;
+
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 9)
+        * (+0.5900435899266435f * y * (3.0f * x2 - y2));
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 10)
+        * (+2.890611442640554f * xy * z);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 11)
+        * (+0.4570457994644658f * y * four_z2_minus_x2_minus_y2);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 12)
+        * (+0.3731763325901154f
+           * z
+           * (2.0f * z2 - 3.0f * x2 - 3.0f * y2));
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 13)
+        * (+0.4570457994644658f * x * four_z2_minus_x2_minus_y2);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 14)
+        * (+1.445305721320277f * z * x2_minus_y2);
+    value += load_sh_coefficient(sh_coefficients, gaussian_id, 15)
+        * (+0.5900435899266435f * x * (x2 - 3.0f * y2));
+#endif
+
+    return 1.0f / (1.0f + exp(-value));
+}
+
 kernel void project_gaussians(
     const device float* positions [[buffer(0)]],
-    const device float* colors [[buffer(1)]],
+    const device float* sh_coefficients [[buffer(1)]],
     const device float* opacity_raw [[buffer(2)]],
     const device float* sigma_world [[buffer(3)]],
     const device float* c2w [[buffer(4)]],
@@ -133,12 +217,8 @@ kernel void project_gaussians(
         return;
     }
 
-    // Analytic symmetric 2x2 eigendecomposition. Clamp eigenvalues, then
-    // reconstruct sigma_uv in screen coordinates.
     const float midpoint = 0.5f * (a + d);
-    const float radius = sqrt(
-        0.25f * (a - d) * (a - d) + b * b
-    );
+    const float radius = sqrt(0.25f * (a - d) * (a - d) + b * b);
     const float lambda_min = clamp(midpoint - radius, 1e-6f, 1e4f);
     const float lambda_max = clamp(midpoint + radius, 1e-6f, 1e4f);
 
@@ -155,8 +235,6 @@ kernel void project_gaussians(
         return;
     }
 
-    // Rectangular axis-aligned 3-sigma AABB. This is the optimization that
-    // previously lived in the closed AABB PR.
     const int radius_u = int(ceil(3.0f * sqrt(clamp(a, 1e-12f, 1e4f))));
     const int radius_v = int(ceil(3.0f * sqrt(clamp(d, 1e-12f, 1e4f))));
 
@@ -196,13 +274,15 @@ kernel void project_gaussians(
         0.999f
     );
 
-    const uint cbase = gid * 3;
+    const float3 view_direction = dp / (length(dp) + 1e-8f);
+    const float3 color = evaluate_sh_color(sh_coefficients, gid, view_direction);
+
     const uint gbase = gid * 9;
     gaussians[gbase] = u;
     gaussians[gbase + 1] = v;
-    gaussians[gbase + 2] = colors[cbase];
-    gaussians[gbase + 3] = colors[cbase + 1];
-    gaussians[gbase + 4] = colors[cbase + 2];
+    gaussians[gbase + 2] = color.x;
+    gaussians[gbase + 3] = color.y;
+    gaussians[gbase + 4] = color.z;
     gaussians[gbase + 5] = opacity;
     gaussians[gbase + 6] = A11;
     gaussians[gbase + 7] = A12;
