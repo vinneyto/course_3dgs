@@ -4,6 +4,7 @@ from importlib.resources import files
 import torch
 
 from course_3dgs import GaussianData, MetalRenderer
+from course_3dgs.metal_renderer import renderer as metal_renderer_module
 from util import evaluate_sh
 
 
@@ -76,6 +77,19 @@ class GaussianDataTest(unittest.TestCase):
         ):
             source = kernel_root.joinpath(name).read_text(encoding="utf-8")
             self.assertIn("#include <metal_stdlib>", source)
+
+    def test_metal_setup_supports_canonical_3dgs_color_mode(self):
+        source = (
+            files("course_3dgs.metal_renderer")
+            .joinpath("kernels", "gaussian_setup.metal")
+            .read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(metal_renderer_module._COLOR_MODES["sigmoid"], 0)
+        self.assertEqual(metal_renderer_module._COLOR_MODES["canonical_3dgs"], 1)
+        self.assertIn("#define COLOR_MODE __COLOR_MODE__", source)
+        self.assertIn("COLOR_MODE_CANONICAL_3DGS", source)
+        self.assertIn("return clamp(value + 0.5f, 0.0f, 1.0f);", source)
 
 
 if __name__ == "__main__":
