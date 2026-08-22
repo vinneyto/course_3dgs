@@ -1,12 +1,17 @@
 import unittest
+from importlib.resources import files
 
 import torch
 
-from metal_renderer.data import GaussianData
+from course_3dgs import GaussianData, MetalRenderer
 from util import evaluate_sh
 
 
 class GaussianDataTest(unittest.TestCase):
+    def test_public_api_exposes_renderer_types(self):
+        self.assertIsNotNone(GaussianData)
+        self.assertIsNotNone(MetalRenderer)
+
     def test_flat_level_four_layout_matches_existing_sh_evaluation(self):
         torch.manual_seed(0)
         n = 5
@@ -59,6 +64,18 @@ class GaussianDataTest(unittest.TestCase):
             dtype=torch.float32,
         )
         torch.testing.assert_close(data.sh_coefficients[0], expected)
+
+    def test_metal_kernels_are_package_resources(self):
+        kernel_root = files("course_3dgs.metal_renderer").joinpath("kernels")
+        for name in (
+            "gaussian_setup.metal",
+            "tile_rasterizer.metal",
+            "binning.metal",
+            "radix_sort.metal",
+            "scan.metal",
+        ):
+            source = kernel_root.joinpath(name).read_text(encoding="utf-8")
+            self.assertIn("#include <metal_stdlib>", source)
 
 
 if __name__ == "__main__":

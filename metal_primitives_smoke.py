@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from metal_renderer import _exclusive_scan_int32, _lsd_radix_sort
+from course_3dgs.metal_renderer.renderer import _exclusive_scan_int32, _lsd_radix_sort
 
 
 def main():

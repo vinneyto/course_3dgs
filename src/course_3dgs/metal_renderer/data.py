@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from util import build_covariance
+from .._geometry import build_covariance
 
 
 _MAX_SH_LEVELS = 4

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
+from importlib.resources import files
 
 import torch
 
 from .data import GaussianData
 
 
-_KERNEL_DIR = Path(__file__).resolve().parent.parent / "metal_kernels"
 _SCAN_BLOCK_SIZE = 256
 _DISPATCH_SIZE = 256
 
@@ -18,7 +17,11 @@ def _round_up(value: int, multiple: int) -> int:
 
 
 def _read_kernel(name: str) -> str:
-    return (_KERNEL_DIR / name).read_text()
+    return (
+        files("course_3dgs.metal_renderer")
+        .joinpath("kernels", name)
+        .read_text(encoding="utf-8")
+    )
 
 
 @lru_cache(maxsize=None)
