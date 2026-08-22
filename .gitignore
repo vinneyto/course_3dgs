@@ -1,5 +1,9 @@
 image_data/
 out_colmap/
 out_bonsai/
-__pycache__
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
 .DS_Store
