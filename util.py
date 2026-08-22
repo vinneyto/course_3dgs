@@ -1,6 +1,89 @@
 from pathlib import Path
+
 import numpy as np
 import torch
+
+
+SH_C0 = 0.28209479177387814
+SH_C1 = 0.4886025119029199
+
+SH_C2_0 = 1.0925484305920792
+SH_C2_1 = 0.31539156525252005
+SH_C2_2 = 0.5462742152960396
+
+SH_C3_0 = 0.5900435899266435
+SH_C3_1 = 2.890611442640554
+SH_C3_2 = 0.4570457994644658
+SH_C3_3 = 0.3731763325901154
+SH_C3_4 = 1.445305721320277
+
+
+def spherical_harmonics_3(x, y, z):
+    """
+    Evaluate real spherical harmonics up to degree 3.
+
+    Args:
+        x, y, z: [N] normalized view-direction components
+
+    Returns:
+        [N, 16]
+    """
+
+    x2 = x * x
+    y2 = y * y
+    z2 = z * z
+
+    xy = x * y
+    yz = y * z
+    xz = x * z
+
+    x2_minus_y2 = x2 - y2
+    four_z2_minus_x2_minus_y2 = 4.0 * z2 - x2 - y2
+
+    Y = [
+        # l = 0
+        torch.full_like(x, SH_C0),
+
+        # l = 1
+        -SH_C1 * y,
+        +SH_C1 * z,
+        -SH_C1 * x,
+
+        # l = 2
+        +SH_C2_0 * xy,
+        +SH_C2_0 * yz,
+        +SH_C2_1 * (3.0 * z2 - 1.0),
+        +SH_C2_0 * xz,
+        +SH_C2_2 * x2_minus_y2,
+
+        # l = 3
+        +SH_C3_0 * y * (3.0 * x2 - y2),
+        +SH_C3_1 * xy * z,
+        +SH_C3_2 * y * four_z2_minus_x2_minus_y2,
+        +SH_C3_3 * z * (2.0 * z2 - 3.0 * x2 - 3.0 * y2),
+        +SH_C3_2 * x * four_z2_minus_x2_minus_y2,
+        +SH_C3_4 * z * x2_minus_y2,
+        +SH_C3_0 * x * (x2 - 3.0 * y2),
+    ]
+
+    return torch.stack(Y, dim=1)
+
+
+def evaluate_sh(f_dc: torch.Tensor, f_rest: torch.Tensor, points: torch.Tensor, c2w: torch.Tensor):
+    sh = torch.empty((points.shape[0], 16, 3), device=points.device, dtype=points.dtype)
+
+    sh[:, 0] = f_dc
+    sh[:, 1:, 0] = f_rest[:, :15]   # R
+    sh[:, 1:, 1] = f_rest[:, 15:30] # G
+    sh[:, 1:, 2] = f_rest[:, 30:45] # B
+
+    view_dir = points - c2w[:3, 3].unsqueeze(0)
+    view_dir = view_dir / (torch.linalg.norm(view_dir, dim=-1, keepdim=True) + 1e-8)
+
+    x, y, z = view_dir[:, 0], view_dir[:, 1], view_dir[:, 2]
+    Y = spherical_harmonics_3(x, y, z)
+
+    return torch.sigmoid((sh * Y.unsqueeze(-1)).sum(dim=1))
 
 
 def project_points(pc, c2w, H, W, fx, fy, cx, cy):
@@ -41,7 +124,7 @@ def quat_to_mat(quat: torch.Tensor):
     return torch.stack([
         1 - 2 * yy - 2 * zz, 2 * xy - 2 * zw, 2 * xz + 2 * yw,
         2 * xy + 2 * zw, 1 - 2 * xx - 2 * zz, 2 * yz - 2 * xw,
-        2 * xz - 2 * yw, 2 * yz  + 2 * xw, 1 - 2 * xx  - 2 * yy 
+        2 * xz - 2 * yw, 2 * yz  + 2 * xw, 1 - 2 * xx  - 2 * yy
     ], dim=-1).reshape(quat.shape[:-1] + (3, 3))
 
 
@@ -57,7 +140,7 @@ def build_covariance(scale_raw, q_raw):
     q = q_raw / (torch.linalg.norm(q_raw, dim=-1, keepdim=True) + 1e-9)
     R = quat_to_mat(q)
     S = torch.diag_embed(scale)
-    
+
     return R @ S @ S @ R.transpose(1, 2)
 
 
@@ -74,23 +157,23 @@ def scale_intrinsics(H, W, H_src, W_src, fx, fy, cx, cy):
 def load_cameras(cameras_path, images_root, device="cpu", dtype=torch.float32):
     cams = np.load(cameras_path, allow_pickle=True)
     cams = sorted(cams, key=lambda x: x['id'])
-    
+
     c2ws = []
     images_paths = []
-    
+
     for cam in cams:
         quat = torch.from_numpy(cam['q'])
         R = quat_to_mat(quat)
         T = torch.from_numpy(cam['t'])
-        
+
         c2w = torch.eye(4, device=device, dtype=dtype)
         c2w[:3, :3] = R.T
         c2w[:3, 3] = -R.T @ T
         c2ws.append(c2w)
-        
+
         image_path = Path(images_root) / cam['name']
         images_paths.append(image_path)
-        
+
     return c2ws, images_paths
 
 
@@ -104,7 +187,7 @@ def inv2x2(M, eps=1e-12):
     d = M[:, 1, 1]
     det = a * d - b * c
     safe_det = torch.clamp(det, min=eps)
-    
+
     inv = torch.empty_like(M)
     inv[:, 0, 0] = d / safe_det
     inv[:, 0, 1] = -b / safe_det
