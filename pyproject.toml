@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "course-3dgs"
+version = "0.1.0"
+description = "Educational 3D Gaussian Splatting renderer with a handwritten Metal backend"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.12.1",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "matplotlib==3.11.0",
+    "numpy==2.5.0",
+    "pillow==12.3.0",
+    "torchmetrics==1.9.0",
+    "anywidget>=0.9",
+]
+tilelang = [
+    "tilelang==0.1.13",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"course_3dgs.metal_renderer" = ["kernels/*.metal"]
