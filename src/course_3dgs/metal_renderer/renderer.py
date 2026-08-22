@@ -10,6 +10,10 @@ from .data import GaussianData
 
 _SCAN_BLOCK_SIZE = 256
 _DISPATCH_SIZE = 256
+_COLOR_MODES = {
+    "sigmoid": 0,
+    "canonical_3dgs": 1,
+}
 
 
 def _round_up(value: int, multiple: int) -> int:
@@ -30,9 +34,17 @@ def _compile_kernel_file(name: str):
 
 
 @lru_cache(maxsize=None)
-def _compile_gaussian_setup(sh_levels: int):
+def _compile_gaussian_setup(sh_levels: int, color_mode: str):
+    try:
+        color_mode_id = _COLOR_MODES[color_mode]
+    except KeyError as error:
+        raise ValueError(
+            f"color_mode must be one of {sorted(_COLOR_MODES)}; got {color_mode!r}"
+        ) from error
+
     source = _read_kernel("gaussian_setup.metal")
     source = source.replace("__SH_LEVELS__", str(sh_levels))
+    source = source.replace("__COLOR_MODE__", str(color_mode_id))
     return torch.mps.compile_shader(source)
 
 
@@ -206,7 +218,12 @@ class MetalRenderer:
         chi_square_clip: float = 9.21,
         alpha_max: float = 0.99,
         alpha_cutoff: float = 1 / 255.0,
+        color_mode: str = "sigmoid",
     ) -> None:
+        if color_mode not in _COLOR_MODES:
+            raise ValueError(
+                f"color_mode must be one of {sorted(_COLOR_MODES)}; got {color_mode!r}"
+            )
         if not torch.backends.mps.is_available():
             raise RuntimeError("The Metal renderer requires an available MPS device")
         if data.positions.device.type != "mps":
@@ -229,14 +246,15 @@ class MetalRenderer:
         self.chi_square_clip = chi_square_clip
         self.alpha_max = alpha_max
         self.alpha_cutoff = alpha_cutoff
-        self._last_stats: dict[str, float | int] = {}
+        self.color_mode = color_mode
+        self._last_stats: dict[str, float | int | str] = {}
 
-        # Compile an SH-specialized setup kernel once for this data layout.
-        self._setup = _compile_gaussian_setup(data.sh_levels)
+        # Compile a setup kernel specialized for both SH layout and color convention.
+        self._setup = _compile_gaussian_setup(data.sh_levels, color_mode)
         self._raster = _compile_tile_rasterizer(tile_size)
 
     @property
-    def last_stats(self) -> dict[str, float | int]:
+    def last_stats(self) -> dict[str, float | int | str]:
         return dict(self._last_stats)
 
     def render(self, c2w: torch.Tensor) -> torch.Tensor:
@@ -296,6 +314,7 @@ class MetalRenderer:
                 "gaussian_tile_intersections": 0,
                 "radix_passes": 0,
                 "sh_levels": data.sh_levels,
+                "color_mode": self.color_mode,
             }
             return torch.zeros((self.H, self.W, 3), device=device, dtype=torch.float32)
 
@@ -382,5 +401,6 @@ class MetalRenderer:
             "gaussian_tile_intersections": num_intersections,
             "radix_passes": radix_passes,
             "sh_levels": data.sh_levels,
+            "color_mode": self.color_mode,
         }
         return final_image
