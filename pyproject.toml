@@ -7,7 +7,7 @@ name = "course-3dgs"
 version = "0.1.0"
 description = "Educational 3D Gaussian Splatting renderer with a handwritten Metal backend"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",
     "torch>=2.12.1",
