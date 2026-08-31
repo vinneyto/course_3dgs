@@ -182,6 +182,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "torch" },
+    { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
@@ -204,6 +205,7 @@ requires-dist = [
     { name = "tilelang", marker = "extra == 'tilelang'", specifier = "==0.1.13" },
     { name = "torch", specifier = ">=2.12.1" },
     { name = "torchmetrics", marker = "extra == 'notebooks'", specifier = "==1.9.0" },
+    { name = "tqdm", specifier = ">=4.70.0" },
 ]
 provides-extras = ["notebooks", "tilelang"]
 
@@ -1453,7 +1455,7 @@ name = "torch-c-dlpack-ext"
 version = "0.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "torch" },
+    { name = "torch", marker = "python_full_version < '3.14'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/37/de/921b6491efce5c389a5ef9bbed3d2d6660005840dae488124173180859ab/torch_c_dlpack_ext-0.1.5.tar.gz", hash = "sha256:d06f0357d575d22a168cc77acb9020fc4bae30968ceb6718a055dcbe92bacabe", size = 12913, upload-time = "2026-01-12T11:25:08.484Z" }
 wheels = [

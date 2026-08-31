@@ -88,7 +88,6 @@ def evaluate_sh(f_dc: torch.Tensor, f_rest: torch.Tensor, points: torch.Tensor, 
 
 def project_points(pc, c2w, H, W, fx, fy, cx, cy):
     device = pc.device
-    print(device)
 
     w2c = torch.eye(4).to(device)
     R = c2w[:3, :3]
