@@ -1,4 +1,5 @@
 image_data/
+image_data_extra/
 out_colmap/
 out_bonsai/
 .venv/
