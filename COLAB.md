@@ -6,7 +6,7 @@ clones the branch and mounts the persistent data directory from Drive.
 
 ## Open the notebook
 
-[Open `3dgs_colab_cuda.ipynb` in Colab](https://colab.research.google.com/github/vinneyto/course_3dgs/blob/colab-cuda/3dgs_colab_cuda.ipynb)
+[Open the editable `3dgs.ipynb` in Colab](https://colab.research.google.com/github/vinneyto/course_3dgs/blob/colab-cuda/3dgs.ipynb)
 
 Before running it, select **Runtime → Change runtime type → T4 GPU** (or another
 GPU). The notebook deliberately stops when CUDA is unavailable instead of
@@ -47,7 +47,7 @@ the data is never copied into GitHub or committed accidentally.
   persistent across runtimes.
 - **Notebook edits → GitHub:** use **File → Save a copy in GitHub**, select
   `vinneyto/course_3dgs`, branch `colab-cuda`, and keep the path
-  `3dgs_colab_cuda.ipynb`.
+  `3dgs.ipynb`.
 - **Python/source edits → GitHub:** edit and commit them in a normal local
   checkout. Avoid putting a long-lived GitHub token directly into a notebook.
 
