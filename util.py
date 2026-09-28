@@ -250,3 +250,25 @@ def eigh_2x2(A):
     )
 
     return evals, evecs
+
+
+def build_gauss_from_sfm(data_path, device, dtype, opacity_init=0.05):
+    point_cloud = np.load(data_path, allow_pickle=True).item()
+    pos = point_cloud[:, :3]
+    color = point_cloud[:, 3:] / 255.0
+    f_dc = inv_sigmoid(color / SH_C0)
+    f_rest = torch.zeros((pos.shape[0], 45), device=device, dtype=dtype)
+    q_rot = torch.zeros((pos.shape[0], 4), device=device, dtype=dtype)
+    q_rot[:, 0] = 1.0
+    scale_std = knn(pos, k=3)
+    opacity = torch.full((pos.shape[0], ), opacity_init, device=device, dtype=dtype)
+
+    gauss = {
+        "pos": pos,
+        "f_dc": f_dc,
+        "f_rest": f_rest,
+        "opacity": opacity,
+        "scale": torch.log(scale_std.clamp(min=1e-6)),
+        "q_rot": q_rot
+    }
+    return gauss
