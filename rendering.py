@@ -474,7 +474,7 @@ def render(pos, color, opacity_raw, sigma, c2w, H, W, fx, fy,
            cx, cy, near=2e-3, far=100, pix_guard=64, 
            T=16, min_conis=1e-6, chi_square_clip=9.21,
            alpha_max=0.99, alpha_cutoff=1/255.):
-    RasterizerFunction.apply(pos, color, opacity_raw, sigma, c2w, H, W, fx, fy,
+    return RasterizerFunction.apply(pos, color, opacity_raw, sigma, c2w, H, W, fx, fy,
                             cx, cy, near, far, pix_guard, 
                             T, min_conis, chi_square_clip,
                             alpha_max, alpha_cutoff)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from scipy.spatial import cKDTree
 
 import numpy as np
 import torch
@@ -252,22 +253,38 @@ def eigh_2x2(A):
     return evals, evecs
 
 
+@torch.no_grad()
+def knn_scale(pos: torch.Tensor, k: int = 3) -> torch.Tensor:
+    """Compute scale_std (N,) from pos (N, 3), preserving device and dtype."""
+    if pos.ndim != 2 or pos.shape[1] != 3:
+        raise ValueError("pos must have shape (N, 3)")
+    if k < 1 or len(pos) <= k:
+        raise ValueError("k must satisfy 1 <= k < number of points")
+
+    points = pos.detach().cpu().double().numpy()
+    distances, _ = cKDTree(points).query(points, k=k + 1, workers=-1)
+
+    # Exclude the point itself and compute the RMS neighbor distance.
+    scale_std = (distances[:, 1:] ** 2).mean(axis=1) ** 0.5
+    return torch.as_tensor(scale_std, device=pos.device, dtype=pos.dtype)
+
+
 def build_gauss_from_sfm(data_path, device, dtype, opacity_init=0.05):
-    point_cloud = np.load(data_path, allow_pickle=True).item()
+    point_cloud =  torch.from_numpy(np.load(data_path)).to(device)
     pos = point_cloud[:, :3]
     color = point_cloud[:, 3:] / 255.0
-    f_dc = inv_sigmoid(color / SH_C0)
+    f_dc = torch.logit(color / SH_C0, eps=1e-6)
     f_rest = torch.zeros((pos.shape[0], 45), device=device, dtype=dtype)
     q_rot = torch.zeros((pos.shape[0], 4), device=device, dtype=dtype)
     q_rot[:, 0] = 1.0
-    scale_std = knn(pos, k=3)
+    scale_std = knn_scale(pos, k=3).unsqueeze(1).repeat(1, 3) 
     opacity = torch.full((pos.shape[0], ), opacity_init, device=device, dtype=dtype)
 
     gauss = {
         "pos": pos,
         "f_dc": f_dc,
         "f_rest": f_rest,
-        "opacity": opacity,
+        "opacity_raw": torch.logit(opacity, eps=1e-6),
         "scale": torch.log(scale_std.clamp(min=1e-6)),
         "q_rot": q_rot
     }
