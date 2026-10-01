@@ -289,3 +289,19 @@ def build_gauss_from_sfm(data_path, device, dtype, opacity_init=0.05):
         "q_rot": q_rot
     }
     return gauss
+
+
+def make_optimizer(pos, f_dc, f_rest, opacity_raw, scale_raw, q_rot, 
+                   lr_pos=1e-3, lr_f_dc=1e-2, lr_f_rest=1e-2,
+                   lr_opacity=5e-3, lr_scale=1e-3, lr_q=5e-4):
+    return torch.optim.Adam(
+        [
+            {"params": [pos], "lr": lr_pos},
+            {"params": [f_dc], "lr": lr_f_dc},
+            {"params": [f_rest], "lr": lr_f_rest},
+            {"params": [opacity_raw], "lr": lr_opacity},
+            {"params": [scale_raw], "lr": lr_scale},
+            {"params": [q_rot], "lr": lr_q},
+        ],
+        betas=(0.9, 0.99), eps=1e-15
+    )
