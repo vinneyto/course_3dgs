@@ -305,3 +305,30 @@ def make_optimizer(pos, f_dc, f_rest, opacity_raw, scale_raw, q_rot,
         ],
         betas=(0.9, 0.99), eps=1e-15
     )
+
+
+def sh_band_mask(bands: int, device, dtype):
+    assert 0 <= bands
+    assert bands <= 3
+    per_band = [3, 5, 7]
+    mask15 = torch.zeros((15), device=device, dtype=dtype)
+    allow = sum(per_band[:bands])
+    mask15[:allow] = 1.0
+    return torch.stack([mask15, mask15, mask15], dim=0)
+
+
+def current_sh_band(it):
+    if it < 1000:
+        return 0
+    elif it < 2000:
+        return 1
+    elif it < 3000:
+        return 2
+    else:
+        return 3
+
+
+def apply_sh_masking(f_rest: torch.Tensor, it: int):
+    bands = current_sh_band(it)
+    mask = sh_band_mask(bands, f_rest.device, f_rest.dtype)
+    return f_rest * mask.reshape(1, 45)
